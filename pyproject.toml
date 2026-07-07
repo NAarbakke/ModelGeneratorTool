@@ -5,11 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "measure3d"
 version = "0.1.0"
-description = "Photo-based real-world dimensioning (measure3d) and scaled mesh export (mesh_gen)"
+description = "Photo-based real-world dimensioning (measure3d, measure2d) and scaled mesh export (mesh_gen)"
 requires-python = ">=3.11"
 dependencies = [
     "pycolmap>=4.1",
     "open3d>=0.19",
+    "opencv-python>=4.8",
     "numpy",
     "click>=8",
 ]
@@ -19,7 +20,8 @@ dev = ["pytest"]
 
 [project.scripts]
 measure3d = "measure3d.cli:main"
+measure2d = "measure2d.cli:main"
 mesh_gen = "mesh_gen.cli:main"
 
 [tool.setuptools]
-packages = ["measure3d", "mesh_gen"]
+packages = ["measure3d", "measure2d", "mesh_gen"]

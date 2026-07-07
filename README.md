@@ -1,8 +1,9 @@
-# measure3d + mesh_gen
+# measure3d + measure2d + mesh_gen
 
 Measure the real-world dimensions of an object from photos, and export a true-to-scale 3D mesh.
 
-- **`measure3d`** — structure-from-motion (pycolmap), scale calibration, and interactive measuring.
+- **`measure3d`** — structure-from-motion (pycolmap), scale calibration, and interactive measuring in 3D. Needs 10+ overlapping photos.
+- **`measure2d`** — quick in-plane measurements from a **single photo** with a planar reference (A4 sheet, credit card, ...). 2D only: no heights, no meshes.
 - **`mesh_gen`** — dense reconstruction (OpenMVS on CPU or pycolmap on CUDA), Poisson meshing, and STL/OBJ/PLY export.
 
 > **All real-world lengths are millimeters** — measurements, bounding boxes, and exported meshes. CAD imports are unit-sensitive: when importing into SOLIDWORKS etc., set the import units to mm.
@@ -68,6 +69,25 @@ The scale factor is stored in `<photos>/.measure3d/scale.json`, so re-measuring 
 | `--openmvs-dir DIR` | — | folder with the OpenMVS binaries |
 
 The export refuses to run without calibration — an unscaled mesh is useless downstream. Expect the CPU dense pass to take **tens of minutes**; it is cached in `.measure3d/dense/` and reused by later exports.
+
+## measure2d: single-photo measurements
+
+When you only need length/width of something lying on a flat surface, skip photogrammetry entirely: put a reference object of known size **in the same plane** (a sheet of A4 paper, a credit card, or any rectangle you can measure) and take **one photo**.
+
+```powershell
+measure2d photo.jpg                     # A4 as reference (default)
+measure2d photo.jpg --ref credit-card   # 85.6 x 53.98 mm
+measure2d photo.jpg --ref 120x80        # custom rectangle, mm
+measure2d photo.jpg --ref-length 300    # line mode: click 2 ruler marks 300 mm apart
+```
+
+A viewer opens on the photo: click the reference's 4 corners (top-left, top-right, bottom-right, bottom-left as seen — perspective is corrected via homography), then click point pairs; each pair prints its distance in mm (`u` undoes, `Enter` finishes). An annotated image and a JSON report land in `output_dims/`.
+
+Limits to keep in mind:
+
+- Only distances **in the reference's plane** are valid. Objects sticking up out of the plane, or closer/farther from the camera, measure wrong — that's the physics of a single view, and it's what `measure3d`'s multi-photo pipeline solves.
+- Line mode (`--ref-length`) does no perspective correction — use it only for photos taken square-on; the 4-corner modes handle oblique shots.
+- Lens distortion is not corrected; avoid ultra-wide/action cams near the frame edges.
 
 ## Troubleshooting
 
