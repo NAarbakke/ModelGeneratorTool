@@ -1,0 +1,14 @@
+# environment / build
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# reconstruction caches inside photo folders
+.measure3d/
+
+# generated outputs
+output_dims/*
+output_models/*
+!output_dims/.gitkeep
+!output_models/.gitkeep
