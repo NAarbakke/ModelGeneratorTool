@@ -51,3 +51,33 @@ def test_reference_presets():
     assert np.allclose(
         geometry.rect_corners(2.0, 3.0), [[0, 0], [2, 0], [2, 3], [0, 3]]
     )
+
+
+def test_fine_pick_recovers_full_res_point_subpixel():
+    """The zoom stage must localize a target to ~1/zoom of a full-res pixel,
+    regardless of how coarse the first click was."""
+    from measure2d import gui
+
+    W, H, crop, zoom = 4000, 3000, gui.FINE_CROP, gui.FINE_ZOOM
+    rng = np.random.default_rng(0)
+    worst = 0.0
+    for _ in range(500):
+        target = rng.uniform([crop, crop], [W - crop, H - crop])
+        coarse = target + rng.uniform(-crop / 2 + 4, crop / 2 - 4, 2)  # rough click, still in patch
+        origin = gui.fine_crop_origin(coarse, crop, W, H)
+        # user clicks the fine pixel nearest the target (integer display pixel)
+        fine = np.round((target - origin) * zoom)
+        recovered = gui.fine_to_full(origin, fine, zoom)
+        worst = max(worst, np.linalg.norm(np.subtract(recovered, target)))
+    assert worst <= np.sqrt(2) * 0.5 / zoom + 1e-9  # <= half a fine-pixel each axis
+
+
+def test_fine_crop_origin_clamps_to_image():
+    from measure2d import gui
+
+    W, H, crop = 4000, 3000, 160
+    # near a corner: origin must not go negative or exceed the image
+    ox, oy = gui.fine_crop_origin((5, 5), crop, W, H)
+    assert ox == 0 and oy == 0
+    ox, oy = gui.fine_crop_origin((W, H), crop, W, H)
+    assert ox == W - crop and oy == H - crop

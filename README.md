@@ -81,13 +81,19 @@ measure2d photo.jpg --ref 120x80        # custom rectangle, mm
 measure2d photo.jpg --ref-length 300    # line mode: click 2 ruler marks 300 mm apart
 ```
 
-A viewer opens on the photo: click the reference's 4 corners (top-left, top-right, bottom-right, bottom-left as seen — perspective is corrected via homography), then click point pairs; each pair prints its distance in mm (`u` undoes, `Enter` finishes). An annotated image and a JSON report land in `output_dims/`.
+A viewer opens on the photo. You place each point with a **two-stage click**: first click *near* the target on the fitted-to-screen image (the AIM view), then a magnified patch of the full-resolution pixels opens and you click the exact spot (the CLICK view; right-click or `b` to re-aim, `Esc` to cancel). This zoom step is what keeps accuracy high on high-resolution photos — clicking the shrunk-to-fit image directly would snap to whole screen pixels, each worth several image pixels.
+
+First place the reference's 4 corners (top-left, top-right, bottom-right, bottom-left as seen — perspective is corrected via homography), then place point pairs; each completed pair prints its distance in mm (`u` undoes, `Enter`/`q` finishes). An annotated image and a JSON report land in `output_dims/`.
+
+### Accuracy
+
+Validated against synthetic photos rendered through a physically correct camera + lens-distortion model (see the tests). With a phone's main camera, the reference placed near what you're measuring, and both kept off the frame edges, expect roughly **0.2–1% error** (about 0.2–1 mm on a 100 mm object). The zoom click removes the click-precision penalty, so the residual error is dominated by uncorrected lens distortion, which grows toward the frame corners.
 
 Limits to keep in mind:
 
 - Only distances **in the reference's plane** are valid. Objects sticking up out of the plane, or closer/farther from the camera, measure wrong — that's the physics of a single view, and it's what `measure3d`'s multi-photo pipeline solves.
 - Line mode (`--ref-length`) does no perspective correction — use it only for photos taken square-on; the 4-corner modes handle oblique shots.
-- Lens distortion is not corrected; avoid ultra-wide/action cams near the frame edges.
+- Lens distortion is not corrected (it needs the physical camera and a checkerboard calibration). Prefer a standard/main lens over ultra-wide or action cams, and keep the reference and target away from the frame edges where distortion is worst.
 
 ## Troubleshooting
 

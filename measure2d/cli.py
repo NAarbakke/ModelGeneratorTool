@@ -37,6 +37,10 @@ def main(photo: str, ref: str, ref_length: float | None) -> None:
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 
+    click.echo(
+        "Each point is a two-stage click: click near it, then click the exact spot "
+        "in the zoomed view (right-click or b = re-aim)."
+    )
     try:
         if ref_length is not None:
             to_metric = _line_reference(image, ref_length)
