@@ -7,10 +7,12 @@ __pycache__/
 # reconstruction caches inside photo folders
 .measure3d/
 
-# user test photos (large binaries) and generated outputs
-input_photos/*
-output_dims/*
-output_models/*
-!input_photos/.gitkeep
-!output_dims/.gitkeep
-!output_models/.gitkeep
+# user test photos/notes (large binaries, personal data) and generated outputs
+input/photos/*
+input/dimensions/*
+output/dimensions/*
+output/models/*
+!input/photos/.gitkeep
+!input/dimensions/.gitkeep
+!output/dimensions/.gitkeep
+!output/models/.gitkeep

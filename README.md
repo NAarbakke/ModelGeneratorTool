@@ -26,7 +26,7 @@ uv pip install --python .venv -e .
 
 ## Usage walkthrough
 
-Take **10–30 overlapping photos** of the object from different angles (good light, textured surfaces, no motion blur) and drop them in `input_photos/` (every command also accepts an explicit folder argument).
+Take **10–30 overlapping photos** of the object from different angles (good light, textured surfaces, no motion blur) and drop them in `input/photos/` (every command also accepts an explicit folder argument).
 
 ```powershell
 .venv\Scripts\Activate.ps1     # or prefix commands with .venv\Scripts\
@@ -55,8 +55,8 @@ The scale factor is stored in `<photos>/.measure3d/scale.json`, so re-measuring 
 |---|---|
 | `<photos>/.measure3d/` | reconstruction cache: database, sparse/dense models, `scale.json` |
 | `<photos>/.measure3d/exports/` | exported meshes / point clouds |
-| `output_dims/<photoset>-measurements.json` | copy of each measuring session |
-| `output_models/` | copy of each exported mesh |
+| `output/dimensions/<photoset>-measurements.json` | copy of each measuring session |
+| `output/models/` | copy of each exported mesh |
 
 ### `mesh_gen export` options
 
@@ -83,7 +83,7 @@ measure2d photo.jpg --ref-length 300    # line mode: click 2 ruler marks 300 mm 
 
 A viewer opens on the photo. You place each point with a **two-stage click**: first click *near* the target on the fitted-to-screen image (the AIM view), then a magnified patch of the full-resolution pixels opens and you click the exact spot (the CLICK view; right-click or `b` to re-aim, `Esc` to cancel). This zoom step is what keeps accuracy high on high-resolution photos — clicking the shrunk-to-fit image directly would snap to whole screen pixels, each worth several image pixels.
 
-First place the reference's 4 corners (top-left, top-right, bottom-right, bottom-left as seen — perspective is corrected via homography), then place point pairs; each completed pair prints its distance in mm (`u` undoes, `Enter`/`q` finishes). An annotated image and a JSON report land in `output_dims/`.
+First place the reference's 4 corners (top-left, top-right, bottom-right, bottom-left as seen — perspective is corrected via homography), then place point pairs; each completed pair prints its distance in mm (`u` undoes, `Enter`/`q` finishes). An annotated image and a JSON report land in `output/dimensions/`.
 
 ### Accuracy
 
@@ -115,13 +115,13 @@ Calibrate and measure **locally** (these open interactive viewers, which need a 
 
 ```bash
 # local: reconstruct + calibrate as usual, then sync photos + the .measure3d cache
-rsync -a ./input_photos/ server:/work/photos/     # includes .measure3d/ with scale.json
+rsync -a ./input/photos/ server:/work/photos/     # includes .measure3d/ with scale.json
 
 # server (headless): dense reconstruction + export at true scale
 mesh_gen export /work/photos --backend gpu --no-crop --format stl
 
 # copy the result back
-rsync -a server:/work/photos/.measure3d/exports/ ./output_models/
+rsync -a server:/work/photos/.measure3d/exports/ ./output/models/
 ```
 
 `--no-crop` matters on a headless server: it skips the interactive crop window. Crop later locally (or export `--format pointcloud` and mesh locally) if the scene has a lot of background.

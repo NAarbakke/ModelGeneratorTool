@@ -35,7 +35,7 @@ def sparse_points_or_die(ws: project.Workspace) -> tuple[np.ndarray, np.ndarray]
 @main.command()
 @click.argument("photos", required=False, type=click.Path())
 def reconstruct(photos: str | None) -> None:
-    """Run sparse structure-from-motion on a photo folder (default: ./input_photos)."""
+    """Run sparse structure-from-motion on a photo folder (default: ./input/photos)."""
     from . import reconstruction
 
     ws = workspace_or_die(photos)

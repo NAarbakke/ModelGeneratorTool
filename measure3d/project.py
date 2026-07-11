@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
-DEFAULT_PHOTOS_DIR = "input_photos"
+DEFAULT_PHOTOS_DIR = "input/photos"
 # Convenience copies land here when the folders exist (they do in this project).
-OUTPUT_DIMS_DIR = "output_dims"
-OUTPUT_MODELS_DIR = "output_models"
+OUTPUT_DIMS_DIR = "output/dimensions"
+OUTPUT_MODELS_DIR = "output/models"
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class Workspace:
 
 
 def resolve_photos_dir(photos: str | None) -> Path:
-    """Resolve the photos argument, defaulting to ./input_photos."""
+    """Resolve the photos argument, defaulting to ./input/photos."""
     path = Path(photos) if photos else Path(DEFAULT_PHOTOS_DIR)
     if not path.is_dir():
         raise FileNotFoundError(f"photo folder not found: {path}")
@@ -81,6 +81,6 @@ def resolve_photos_dir(photos: str | None) -> Path:
 
 
 def output_dir(kind: str) -> Path | None:
-    """Return ./output_dims or ./output_models if it exists in the current directory."""
+    """Return ./output/dimensions or ./output/models if it exists in the current directory."""
     path = Path(kind)
     return path if path.is_dir() else None
