@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 import click
 import numpy as np
 
-from . import project, scaling
+from core import scale, workspace
+from core.cliutil import board_options, make_spec, workspace_or_die
 
 
 @click.group()
@@ -16,18 +17,11 @@ def main() -> None:
     """Real-world dimensions of an object from photos. Units: millimeters."""
 
 
-def workspace_or_die(photos: str | None) -> project.Workspace:
-    try:
-        return project.Workspace(project.resolve_photos_dir(photos))
-    except FileNotFoundError as exc:
-        raise click.ClickException(str(exc))
-
-
-def sparse_points_or_die(ws: project.Workspace) -> tuple[np.ndarray, np.ndarray]:
-    from . import reconstruction
+def sparse_points_or_die(ws: workspace.Workspace) -> tuple[np.ndarray, np.ndarray]:
+    from core import sfm
 
     try:
-        return reconstruction.load_sparse_points(ws)
+        return sfm.load_sparse_points(ws)
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 
@@ -36,11 +30,11 @@ def sparse_points_or_die(ws: project.Workspace) -> tuple[np.ndarray, np.ndarray]
 @click.argument("photos", required=False, type=click.Path())
 def reconstruct(photos: str | None) -> None:
     """Run sparse structure-from-motion on a photo folder (default: ./input/photos)."""
-    from . import reconstruction
+    from core import sfm
 
     ws = workspace_or_die(photos)
     try:
-        s = reconstruction.run_sfm(ws)
+        s = sfm.run_sfm(ws)
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
 
@@ -55,7 +49,7 @@ def reconstruct(photos: str | None) -> None:
             f"only {s.registered_images} of {s.total_images} images registered - add more "
             "overlapping photos or improve texture/lighting (the partial model was kept)"
         )
-    click.echo("Next: measure3d calibrate --known-distance <mm>")
+    click.echo("Next: measure3d calibrate --known-distance <mm>  (or --board with a ChArUco board)")
 
 
 @main.command()
@@ -66,11 +60,18 @@ def reconstruct(photos: str | None) -> None:
     default=None,
     help="Real distance in mm between the two points you pick (prompted if omitted).",
 )
-def calibrate(photos: str | None, known_distance: float | None) -> None:
-    """Set the real-world scale by picking two points of known distance."""
-    from . import picking
+@click.option("--board", "use_board", is_flag=True,
+              help="Calibrate from a ChArUco board in the photos (`scan2cad board` prints one) "
+                   "instead of picking points. Also sets a Z-up frame on the board.")
+@board_options
+def calibrate(photos: str | None, known_distance: float | None, use_board: bool, **board_opts) -> None:
+    """Set the real-world scale by picking two points of known distance, or from a ChArUco board."""
+    from core import picking
 
     ws = workspace_or_die(photos)
+    if use_board:
+        _calibrate_board(ws, make_spec(**board_opts))
+        return
     points, colors = sparse_points_or_die(ws)
     pcd = picking.make_cloud(points, colors)
 
@@ -81,17 +82,33 @@ def calibrate(photos: str | None, known_distance: float | None) -> None:
             break
         click.echo(f"Picked {len(picked)} point(s); exactly 2 are needed - reopening viewer.")
 
-    picked_units = scaling.distance(points[picked[0]], points[picked[1]])
+    picked_units = scale.distance(points[picked[0]], points[picked[1]])
     if known_distance is None:
         known_distance = click.prompt("Real-world distance between the points (mm)", type=float)
     try:
-        scale = scaling.compute_scale(known_distance, picked_units)
+        mm_per_unit = scale.compute_scale(known_distance, picked_units)
     except ValueError as exc:
         raise click.ClickException(str(exc))
 
-    scaling.save_scale(ws.scale_path, scale, known_distance, picked_units)
-    click.echo(f"Scale set: 1 reconstruction unit = {scale:.4f} mm")
+    scale.save_scale(ws.scale_path, mm_per_unit, known_distance, picked_units)
+    click.echo(f"Scale set: 1 reconstruction unit = {mm_per_unit:.4f} mm")
     click.echo(f"Saved to {ws.scale_path} - re-measuring won't need re-calibration.")
+
+
+def _calibrate_board(ws: workspace.Workspace, spec) -> None:
+    from core import board
+
+    try:
+        res = board.calibrate(ws, spec)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"Board found in {res['views']} photos; {res['method']} with {res['corners']} "
+               f"corners, residual {res['rms_mm']:.3f} mm rms.")
+    click.echo(f"Scale set: 1 reconstruction unit = {res['scale_mm_per_unit']:.4f} mm; "
+               "axes are now the board's (origin at its center, Z up).")
+    if res["rms_mm"] > 0.5:
+        click.echo("  warning: residual > 0.5 mm - is the board flat and the square size right?")
+    click.echo(f"Saved to {ws.scale_path}.")
 
 
 @main.command()
@@ -99,13 +116,14 @@ def calibrate(photos: str | None, known_distance: float | None) -> None:
 @click.option("--crop", is_flag=True, help="Interactively crop away background/floor first.")
 def measure(photos: str | None, crop: bool) -> None:
     """Interactive measuring: pick point pairs, get real distances in mm."""
-    from . import picking
+    from core import picking
 
     ws = workspace_or_die(photos)
-    scale = scaling.load_scale(ws.scale_path)
-    if scale is None:
+    cal = scale.load_calibration(ws.scale_path)
+    if cal is None:
         raise click.ClickException("no calibration found - run `measure3d calibrate` first")
     points, colors = sparse_points_or_die(ws)
+    points = cal.to_mm(points)  # mm from here on (board-aligned axes after --board)
     pcd = picking.make_cloud(points, colors)
 
     if crop:
@@ -118,24 +136,26 @@ def measure(photos: str | None, crop: bool) -> None:
         picked = picking.pick_points(pcd, "measure3d - pick point pairs")
         if len(picked) % 2:
             click.echo("(odd number of picks - the last point is ignored)")
-        pair_dists = scaling.pair_distances_mm(points, picked, scale)
+        pair_dists = scale.pair_distances_mm(points, picked, 1.0)
         for i, dist in enumerate(pair_dists, start=len(distances) + 1):
             click.echo(f"  measurement {i}: {dist:.2f} mm")
         distances.extend(pair_dists)
         if not click.confirm("Measure more pairs?", default=False):
             break
 
-    mn, mx = scaling.scaled_aabb_mm(points, scale)
+    mn, mx = scale.scaled_aabb_mm(points, 1.0)
     extent = mx - mn
     click.echo(f"\nBounding box (mm): {extent[0]:.1f} x {extent[1]:.1f} x {extent[2]:.1f}")
+    if cal.board_frame:
+        click.echo("  (axes aligned to the ChArUco board)")
     if not crop:
         click.echo("  warning: box includes background points - re-run with --crop to isolate the object")
 
     _write_report(ws, distances, extent, cropped=crop)
 
 
-def _write_report(ws: project.Workspace, distances: list[float], extent: np.ndarray, cropped: bool) -> None:
-    out_dir = project.output_dir(project.OUTPUT_DIMS_DIR)
+def _write_report(ws: workspace.Workspace, distances: list[float], extent: np.ndarray, cropped: bool) -> None:
+    out_dir = workspace.output_dir(workspace.OUTPUT_DIMS_DIR)
     if out_dir is None:
         return
     report = {

@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from measure3d.project import Workspace
+from .workspace import Workspace
 
 OPENMVS_BINARIES = ("InterfaceCOLMAP", "DensifyPointCloud")
 OPENMVS_DIR_ENV = "MEASURE3D_OPENMVS_DIR"
@@ -21,7 +21,7 @@ OpenMVS binaries (InterfaceCOLMAP, DensifyPointCloud) not found.
 
 To install on Windows:
   1. Download OpenMVS_Windows_x64.zip from https://github.com/cdcseacave/openMVS/releases
-  2. Extract it, then point mesh_gen at the folder containing DensifyPointCloud.exe:
+  2. Extract it, then point the tools at the folder containing DensifyPointCloud.exe:
      add it to PATH, set {OPENMVS_DIR_ENV}, or pass --openmvs-dir.
 On Linux, build from source: https://github.com/cdcseacave/openMVS/wiki/Building"""
 

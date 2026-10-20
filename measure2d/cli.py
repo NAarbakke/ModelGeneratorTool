@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 import numpy as np
 
-from measure3d import project
+from core import workspace
 
 from . import geometry
 
@@ -111,7 +111,7 @@ def _ref_dims(ref: str) -> tuple[float, float]:
 def _write_report(photo: Path, reference: str, distances: list[float], annotated) -> None:
     import cv2
 
-    out_dir = project.output_dir(project.OUTPUT_DIMS_DIR) or photo.parent
+    out_dir = workspace.output_dir(workspace.OUTPUT_DIMS_DIR) or photo.parent
     image_path = out_dir / f"{photo.stem}-annotated.png"
     cv2.imwrite(str(image_path), annotated)
     report = {

@@ -1,10 +1,15 @@
-# measure3d + measure2d + mesh_gen
+# ModelGeneratorTool
 
-Measure the real-world dimensions of an object from photos, and export a true-to-scale 3D mesh.
+Measure the real-world dimensions of an object from photos, export a true-to-scale 3D mesh, or reverse-engineer a part from video into parametric CAD.
+
+Four command-line tools in one repo:
 
 - **`measure3d`** — structure-from-motion (pycolmap), scale calibration, and interactive measuring in 3D. Needs 10+ overlapping photos.
 - **`measure2d`** — quick in-plane measurements from a **single photo** with a planar reference (A4 sheet, credit card, ...). 2D only: no heights, no meshes.
 - **`mesh_gen`** — dense reconstruction (OpenMVS on CPU or pycolmap on CUDA), Poisson meshing, and STL/OBJ/PLY export.
+- **`scan2cad`** — **video → parametric CAD (STEP)**: frames, SfM, ChArUco scale, SAM 2 object selection, primitive fitting, and an MCP tool server so a model (Claude, Codex, ...) writes and checks the CadQuery. See [scan2cad](#scan2cad-video--cad).
+
+All four are thin CLIs over a shared **`core`** package: workspace layout, SfM, the scale/ChArUco calibration, dense backends and point picking. A calibration made by one tool is used by the others (see [Layout](#layout)).
 
 > **All real-world lengths are millimeters** — measurements, bounding boxes, and exported meshes. CAD imports are unit-sensitive: when importing into SOLIDWORKS etc., set the import units to mm.
 
@@ -14,7 +19,8 @@ Requires Python 3.11–3.12 (Open3D has no 3.13 wheels yet) and [uv](https://doc
 
 ```powershell
 uv venv --python 3.12
-uv pip install --python .venv -e .
+uv pip install --python .venv -e .                # measure3d, measure2d, mesh_gen
+uv pip install --python .venv -e ".[scan2cad]"    # + scan2cad (SciPy, CadQuery/OCCT, MCP, ...)
 ```
 
 ### OpenMVS (needed for `mesh_gen export` on machines without CUDA)
@@ -37,6 +43,9 @@ measure3d reconstruct
 # 2. Calibrate scale: a viewer opens; Shift+click two points whose real distance you know
 #    (e.g. the ends of a ruler lying next to the object), close with Q.
 measure3d calibrate --known-distance 210
+#    ...or, if the object stands on a printed ChArUco board (`scan2cad board`), no clicking:
+#    scale plus a Z-up frame on the board, so bounding boxes and meshes come out board-aligned.
+measure3d calibrate --board --square-mm 25
 
 # 3. Measure: pick point pairs in the viewer, get distances in mm.
 #    --crop first opens a crop window (K to lock, drag a box, C to crop, Q when done)
@@ -47,7 +56,7 @@ measure3d measure --crop
 mesh_gen export --format stl
 ```
 
-The scale factor is stored in `<photos>/.measure3d/scale.json`, so re-measuring and exporting never require re-calibrating.
+The calibration is stored in `<photos>/.measure3d/scale.json` (a similarity transform from the SfM world to mm, plus how it was made), so re-measuring and exporting never require re-calibrating.
 
 ### Outputs
 
@@ -94,6 +103,95 @@ Limits to keep in mind:
 - Only distances **in the reference's plane** are valid. Objects sticking up out of the plane, or closer/farther from the camera, measure wrong — that's the physics of a single view, and it's what `measure3d`'s multi-photo pipeline solves.
 - Line mode (`--ref-length`) does no perspective correction — use it only for photos taken square-on; the 4-corner modes handle oblique shots.
 - Lens distortion is not corrected (it needs the physical camera and a checkerboard calibration). Prefer a standard/main lens over ultra-wide or action cams, and keep the reference and target away from the frame edges where distortion is worst.
+
+## scan2cad: video → CAD
+
+Film a part standing on a printed ChArUco board, click the part once, and get a true-scale, Z-up point cloud of just that part, its faces fitted as planes/cylinders/cones/spheres/tori, and a model-written CadQuery model scored against the scan.
+
+```
+video ─► frames ─► SfM ─► ChArUco align ─► SAM 2 masks ─► object cloud ─► segment + fit ─► agent (MCP) ─► STEP
+         OpenCV    pycolmap  mm, Z up       one click      OpenMVS/hull    RANSAC + LSQ    CadQuery/OCP
+```
+
+### Install
+
+```powershell
+# SAM 2 (object masks): CPU PyTorch first, then the extras
+uv pip install --python .venv --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch torchvision
+uv pip install --python .venv -e ".[scan2cad,sam,agent]"
+```
+
+OpenMVS (see [above](#openmvs-needed-for-mesh_gen-export-on-machines-without-cuda)) gives the accurate dense cloud; without it `scan2cad cloud` falls back to the visual hull (see limits below). The SAM 2.1 tiny checkpoint downloads from Hugging Face on first use.
+
+### Capture
+
+- `scan2cad board` writes `output/board.png` (9×7 squares of 25 mm, fits A4). Print at **100 %**, glue it flat, **measure one square** and pass `--square-mm` to `align` if it differs.
+- Stand the part on the board. Matte, textured surfaces reconstruct; shiny or plain ones (machined metal, white plastic) need scanning spray or a light dusting of powder.
+- Walk **one slow, continuous orbit** (no cuts), at two or three heights, **including a low one**: the camera elevation decides what the cloud can see (top faces need high views, the walls of a hole need steep ones). Keep the board in view in most frames.
+
+### Run
+
+```powershell
+scan2cad frames input/videos/part.mp4          # -> output/scans/part (sharpest frame per time bin; longest shot if the video has cuts)
+scan2cad reconstruct output/scans/part
+scan2cad align output/scans/part               # ChArUco: scale + board frame (same as measure3d calibrate --board)
+scan2cad mask output/scans/part                # click the part (L = part, R = not part, Enter); or --point 0:X,Y
+scan2cad cloud output/scans/part               # dense if OpenMVS/CUDA is available, else visual hull
+scan2cad segment output/scans/part             # faces + fitted primitives; prints the scan's noise floor
+scan2cad agent output/scans/part --runner claude          # or --runner codex [--model ...]
+```
+
+Without a board, `measure3d calibrate output/scans/part/frames --known-distance <mm>` sets scale from two picked points (no Z-up frame then).
+
+Working by hand instead of with an agent: `scan2cad build SCAN NAME model.py` (CadQuery assigning `result`), `scan2cad score SCAN NAME`, `scan2cad render SCAN NAME` (deviation-colored previews in `<scan>/renders/`).
+
+### The agent layer
+
+`scan2cad serve SCAN` is an MCP server (stdio) with these tools: `scan_info`, `segment_scan`, `list_regions`, `region`, `fit_region`, `build_cad`, `score_cad`, `render_cad`, `show_code`, `list_candidates`, `refit_faces`, `export_cad`. `scan2cad agent` runs it with either runner, logs each run to `<scan>/agent_runs/`, and gives the model no other tools (Claude: built-in tools off; Codex: read-only sandbox). To use it from your own session instead:
+
+```powershell
+claude mcp add scan2cad -- C:\path\to\.venv\Scripts\python.exe -m scan2cad.cli serve C:\path\to\output\scans\part
+codex mcp add scan2cad -- C:\path\to\.venv\Scripts\python.exe -m scan2cad.cli serve C:\path\to\output\scans\part
+```
+
+Scores the agent sees: `scan_to_cad` (scan points the model doesn't explain: missing features), `cad_to_scan` (model surface no scan supports, counted only where ≥ 3 cameras saw it within 60° of head-on: invented features), per-region deviations, the worst areas by location, silhouette IoU against the SAM 2 masks, and an F-score at max(2.5 × tolerance, 3 × point spacing).
+
+### Comparing models
+
+Scores against a noisy scan reward overfitting, so `scan2cad bench` judges each run against the **true CAD** of known parts (`scan2cad/synthetic/parts.py`): volume IoU, chamfer distance, bbox error and whether the face types match.
+
+```powershell
+scan2cad bench --runner claude:claude-opus-5-5 --runner codex:<model> --out output/bench
+```
+
+Each runner gets a fresh copy of each case; results land in `output/bench/results-*.md`. `scan2cad synth PART OUT` renders a full synthetic capture (video + ground truth) to test the whole photo pipeline the same way.
+
+### DualBrep (freeform fallback)
+
+[DualBrep](https://github.com/AutodeskAILab/DualBrep) (Apache-2.0) turns an oriented cloud into a watertight B-rep with spline faces. It needs CUDA and its own conda env, so it runs as a subprocess or on another machine: `scan2cad dualbrep prepare SCAN` writes a normalized bundle with the commands to run, `scan2cad dualbrep import SCAN` maps the STEP back to mm. `run` does both locally when given `--dualbrep-dir` and `--python`. Import automatically adds a `<name>_refit` candidate whose faces that fit an analytic surface within tolerance are rebuilt as true planes/cylinders/cones/spheres/tori; each face swap is checked and rolled back if the solid breaks.
+
+### Measured accuracy
+
+Synthetic capture of `block_hole` (80 × 50 × 30 mm, 4 × R6 fillets, Ø20 through-hole), 60 frames at 960×540, run through the real pipeline on CPU:
+
+| Stage | Result |
+|---|---|
+| SfM | 60/60 frames, 0.50 px reprojection, focal 819.5 (true 820) |
+| ChArUco align | corner fit 0.026 mm rms; recovered camera positions within 0.18 mm mean / 0.35 mm max of truth |
+| SAM 2 masks (one click) | IoU 0.995 mean, 0.992 worst frame vs exact masks |
+| Dense cloud (OpenMVS) | 0.087 mm mean / 0.27 mm p95 from the true surface; extent 80.7 × 50.8 × 29.7 mm; 91 % of the visible surface covered |
+| Fitted planes | within 0.05 mm of true offsets; noise floor 0.061 mm |
+| Fitted cylinders | fillet Ø11.74 (true 12); hole Ø19.46 (true 20, only its top seen) |
+
+Real footage adds lens blur, rolling shutter, compression, lighting changes and shine, so expect several times these errors, and check `noise_floor_mm` on your own scans.
+
+### Limits
+
+- **CPU timings** (this machine, 60 frames): SfM ~9 min, SAM 2 ~10 s/frame, OpenMVS dense ~50 min, segmentation ~3–4 min. A CUDA GPU speeds up SAM 2 and dense by an order of magnitude.
+- **Visual hull** (no OpenMVS): silhouettes only, so top faces bulge by ≈ half-width × tan(lowest camera elevation) (9 mm on the test part) and holes and pockets nobody looked straight into stay filled. Fine for outlines, wrong for heights.
+- **Face refit** keeps each face's existing edges and does not re-intersect neighbouring surfaces. Faces that are analytic up to noise convert cleanly (all faces of 3 of the 4 test parts); a dome with a pole can stay a spline.
+- **DualBrep** is wired up but untested here (no CUDA GPU on this machine). It was trained on clean CAD-derived clouds, so score its output before trusting it.
+- Narrow bands are geometrically ambiguous (a 3 mm chamfer fits a cone or a sphere equally well); such regions list the alternatives under `also_fits`.
 
 ## Troubleshooting
 
@@ -149,7 +247,34 @@ docker run --gpus all -v $PWD/photos:/photos mesh_gen export /photos --backend g
 ## Development
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests   # smoke test: scaling/geometry math on synthetic data
+.venv\Scripts\python.exe -m pytest tests -m "not slow"   # fast: math, CAD kernel, scoring, harness (~1 min)
+.venv\Scripts\python.exe -m pytest tests -m slow         # segmentation + B-rep refit end to end (minutes)
 ```
 
-Package layout: `measure3d/` (project paths, SfM, scaling math, interactive picking, CLI) and `mesh_gen/` (dense backends, meshing, CLI); `mesh_gen` reads the `.measure3d/` workspace that `measure3d` produces.
+### Layout
+
+```
+core/                 shared by every tool (numpy, OpenCV, pycolmap, Open3D, click)
+  workspace.py        <images>/.measure3d/ layout, input/ and output/ dirs
+  sfm.py              structure-from-motion (pycolmap)
+  scale.py            measurement math, the scale.json calibration (world -> mm)
+  board.py            ChArUco board: print, detect, align + calibrate a workspace
+  geometry.py         Umeyama similarity, triangulation, transforms
+  dense.py            dense backends: OpenMVS (CPU), pycolmap patch-match (CUDA)
+  picking.py          Open3D point picking and cropping
+  cliutil.py          shared click helpers (workspace lookup, board options)
+measure3d/cli.py      reconstruct, calibrate (points or --board), measure
+measure2d/            single-photo homography measuring (its own OpenCV UI)
+mesh_gen/             Poisson meshing + export (cli.py, meshing.py)
+scan2cad/             video -> CAD; needs the `scan2cad` extra
+  cli.py, workspace.py   commands, per-scan folder layout
+  capture/            frames from video, SAM 2 masks, object cloud
+  geometry/           primitive fitting, segmentation, ray casting
+  cad/                CadQuery/OCP helpers, sandboxed runner, analytic refit, DualBrep bridge
+  evaluation/         CAD-vs-scan scoring, deviation renders
+  agent/              MCP server (Harness), Claude/Codex runners, benchmark
+  synthetic/          known test parts, synthetic captures with ground truth
+tests/                test_core, test_measure2d, test_mesh_gen, test_primitives, test_scan2cad(_slow)
+```
+
+Dependencies only point downwards: the four tools import `core`, never each other.

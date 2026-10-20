@@ -32,7 +32,7 @@ def make_cloud(points: np.ndarray, colors: np.ndarray | None = None):
     return pcd
 
 
-def pick_points(pcd, window_name: str = "measure3d - pick points") -> list[int]:
+def pick_points(pcd, window_name: str = "pick points") -> list[int]:
     """Open the picking viewer; blocks until closed. Returns picked point indices."""
     import open3d as o3d
 
@@ -52,7 +52,7 @@ def interactive_crop(pcd):
 
     print(CROP_HELP)
     vis = o3d.visualization.VisualizerWithEditing()
-    vis.create_window(window_name="measure3d - crop (K, drag, C, then Q)", width=1280, height=800)
+    vis.create_window(window_name="crop (K, drag, C, then Q)", width=1280, height=800)
     vis.add_geometry(pcd)
     vis.run()
     vis.destroy_window()

@@ -1,3 +1,3 @@
-"""mesh_gen: dense reconstruction and real-world-scale mesh export for measure3d projects."""
+"""mesh_gen: real-world-scale mesh export (dense reconstruction via core.dense, Poisson meshing)."""
 
 __version__ = "0.1.0"

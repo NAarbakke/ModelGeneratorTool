@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "measure3d"
+name = "ModelGeneratorTool"
 version = "0.1.0"
-description = "Photo-based real-world dimensioning (measure3d, measure2d) and scaled mesh export (mesh_gen)"
+description = "Photo-based real-world dimensioning (measure3d, measure2d), scaled mesh export (mesh_gen) and scan-to-CAD (scan2cad), on a shared core"
 requires-python = ">=3.11"
 dependencies = [
     "pycolmap>=4.1",
@@ -17,11 +17,24 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# scan2cad pipeline: primitive fitting, CAD kernel, MCP server
+scan2cad = ["scipy>=1.11", "scikit-image>=0.22", "trimesh>=4", "cadquery>=2.4", "mcp>=1.0"]
+# SAM 2 object masks. Install torch first from https://download.pytorch.org/whl/cpu (or a CUDA index).
+sam = ["sam2>=1.1", "torch>=2.5", "huggingface_hub"]
+agent = ["claude-agent-sdk"]
 
 [project.scripts]
 measure3d = "measure3d.cli:main"
 measure2d = "measure2d.cli:main"
 mesh_gen = "mesh_gen.cli:main"
+scan2cad = "scan2cad.cli:main"
 
 [tool.setuptools]
-packages = ["measure3d", "measure2d", "mesh_gen"]
+packages = [
+    "core", "measure3d", "measure2d", "mesh_gen",
+    "scan2cad", "scan2cad.capture", "scan2cad.geometry", "scan2cad.cad",
+    "scan2cad.evaluation", "scan2cad.agent", "scan2cad.synthetic",
+]
+
+[tool.pytest.ini_options]
+markers = ["slow: end-to-end segmentation/refit checks taking minutes (deselect with -m 'not slow')"]

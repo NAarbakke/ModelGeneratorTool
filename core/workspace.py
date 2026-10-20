@@ -1,7 +1,9 @@
-"""Workspace layout: the .measure3d/ directory inside a photo folder, plus output dirs.
+"""Workspace layout: the .measure3d/ directory inside an image folder, plus output dirs.
 
-The whole .measure3d/ directory is designed to be synced to a GPU server as-is:
-it carries the database, sparse model, and the scale.json calibration sidecar.
+Shared by every tool: measure3d and mesh_gen use a photo folder, scan2cad the
+frames/ folder of a scan. The whole .measure3d/ directory is designed to be
+synced to a GPU server as-is: it carries the database, sparse model, dense
+cloud and the scale.json calibration sidecar.
 """
 
 from __future__ import annotations

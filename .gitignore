@@ -9,10 +9,18 @@ __pycache__/
 
 # user test photos/notes (large binaries, personal data) and generated outputs
 input/photos/*
+input/videos/*
 input/dimensions/*
 output/dimensions/*
 output/models/*
+output/scans/
+output/bench/
+output/board.*
 !input/photos/.gitkeep
+!input/videos/.gitkeep
 !input/dimensions/.gitkeep
 !output/dimensions/.gitkeep
 !output/models/.gitkeep
+
+# local third-party binaries (OpenMVS)
+.tools/

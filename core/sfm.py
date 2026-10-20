@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .project import Workspace
+from .workspace import Workspace
 
 
 @dataclass
@@ -18,8 +18,15 @@ class SfmSummary:
     mean_reprojection_error: float
 
 
-def run_sfm(ws: Workspace) -> SfmSummary:
-    """Run sparse reconstruction; the best model is written to <photos>/.measure3d/sparse/0."""
+EXHAUSTIVE_MAX_IMAGES = 150  # above this, sequential matching (video frames) is much cheaper
+
+
+def run_sfm(ws: Workspace, single_camera: bool = False, matcher: str = "auto") -> SfmSummary:
+    """Run sparse reconstruction; the best model is written to <photos>/.measure3d/sparse/0.
+
+    single_camera: all images share one set of intrinsics (frames of one video).
+    matcher: "exhaustive", "sequential" (neighbors in name order), or "auto".
+    """
     import pycolmap
 
     images = ws.list_images()
@@ -36,10 +43,17 @@ def run_sfm(ws: Workspace) -> SfmSummary:
         shutil.rmtree(ws.sparse_dir)
     ws.sparse_dir.mkdir(parents=True)
 
+    if matcher == "auto":
+        matcher = "exhaustive" if len(images) <= EXHAUSTIVE_MAX_IMAGES else "sequential"
+    camera_mode = pycolmap.CameraMode.SINGLE if single_camera else pycolmap.CameraMode.AUTO
+
     print(f"[1/3] Extracting features from {len(images)} images...")
-    pycolmap.extract_features(ws.database_path, ws.photos_dir)
-    print("[2/3] Matching features (exhaustive)...")
-    pycolmap.match_exhaustive(ws.database_path)
+    pycolmap.extract_features(ws.database_path, ws.photos_dir, camera_mode=camera_mode)
+    print(f"[2/3] Matching features ({matcher})...")
+    if matcher == "sequential":
+        pycolmap.match_sequential(ws.database_path)
+    else:
+        pycolmap.match_exhaustive(ws.database_path)
     print("[3/3] Mapping (incremental SfM)...")
     maps = pycolmap.incremental_mapping(ws.database_path, ws.photos_dir, ws.sparse_dir)
     if not maps:
@@ -66,7 +80,7 @@ def load_sparse_points(ws: Workspace) -> tuple[np.ndarray, np.ndarray]:
 
     if not ws.has_sparse():
         raise RuntimeError(
-            f"no reconstruction found in {ws.sparse_model_dir} - run `measure3d reconstruct` first"
+            f"no reconstruction found in {ws.sparse_model_dir} - run `measure3d reconstruct` (or `scan2cad reconstruct`) first"
         )
     rec = pycolmap.Reconstruction(ws.sparse_model_dir)
     pts3d = rec.points3D.values()
